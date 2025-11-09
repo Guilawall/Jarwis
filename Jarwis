@@ -1,0 +1,595 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/FULL_CODE.md b/FULL_CODE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..b2eaea0fe27d830162dfc04cdd4ef7b63e20f628
+--- /dev/null
++++ b/FULL_CODE.md
+@@ -0,0 +1,1098 @@
++# Código completo do Jarwis
++
++Este arquivo reúne todos os arquivos principais do projeto para que você possa copiar e colar diretamente no GitHub. Cada seção abaixo mostra o caminho do arquivo e o conteúdo exato que deve ser colado.
++
++## `.gitignore`
++```gitignore
++__pycache__/
++*.pyc
++```
++
++## `README.md`
++```markdown
++# Assistente Jarwis reescrito
++
++Este projeto implementa um protótipo do "Jarwis": um assistente de voz em português
++que fica escutando em segundo plano, responde quando ouve o chamado "Jarwis" e
++executa ações específicas:
++
++- Responde "Senhor, o que deseja?" após ouvir o wake word.
++- Realiza chamadas telefônicas para contatos salvos quando você diz
++  **"Jarwis… ligar para (nome do contato)"**.
++- Mantém uma lista persistente: é possível adicionar, remover, consultar todos os
++  itens ou perguntar qual é o *n*-ésimo termo cadastrado.
++
++O foco principal é o Android via Termux + Termux:API, mas o código também pode ser
++executado em um computador com microfone.
++
++## Comandos suportados
++
++Depois do wake word, o Jarwis entende as frases abaixo (maiúsculas apenas para
++ilustração):
++
++| Frase | Ação |
++| ----- | ---- |
++| `Jarwis… ligar para Maria` | Procura "Maria" nos contatos e inicia uma chamada telefônica. |
++| `Jarwis… adicionar café à lista` | Armazena a palavra "café" na lista persistente. |
++| `Jarwis… retirar café da lista` | Remove "café" se existir, ou responde "Senhor, isso não tem na lista." |
++| `Jarwis… o que tem na lista?` | Lê em voz alta todos os itens cadastrados. |
++| `Jarwis… qual é o quinto termo da lista?` | Informa o item na posição solicitada (ordinais até vigésimo ou números). |
++
++A lista fica salva em `~/.jarwis/lista.json`, permitindo que o conteúdo seja
++mantido entre execuções.
++
++## Instalação no Android (Termux)
++
++1. Instale [Termux](https://f-droid.org/packages/com.termux/) e o complemento
++   [Termux:API](https://f-droid.org/packages/com.termux.api/).
++2. Abra o Termux, conceda acesso ao armazenamento e prepare os pacotes básicos:
++   ```bash
++   termux-setup-storage
++   pkg update
++   pkg install python clang fftw libffi ffmpeg termux-api git
++   python -m pip install --upgrade pip
++   ```
++3. Clone este repositório (substitua pelo endereço correto se estiver usando um fork):
++   ```bash
++   git clone https://github.com/Guilawall/Jarwis.git
++   cd Jarwis
++   ```
++
++  > **Baixou um ZIP pelo celular?** O Android costuma descompactar em uma
++  > pasta com espaço, como `Sistema Jarwis`. Nesse caso:
++  >
++  > 1. Rode `ls` dentro da pasta recém-criada. Se o comando listar apenas
++  >    `Sistema Jarwis`, significa que você ainda está um nível acima do
++  >    projeto original.
++  > 2. Entre nessa pasta com aspas: `cd "Sistema Jarwis"` e rode `ls` de
++  >    novo. Este repositório agora traz um **atalho** lá dentro: um novo
++  >    `README.md`, um `main.py` que aponta para o original e arquivos
++  >    `requirements*.txt` que importam os do diretório pai.
++  > 3. Mesmo assim, a recomendação é voltar para o diretório raiz usando
++  >    `cd ..` ou renomear a pasta para evitar o espaço: `mv "Sistema Jarwis" Jarwis`
++  >    e voltar para ela com `cd Jarwis` antes de continuar.
++
++   Confirme que você está dentro da pasta correta e que os arquivos
++   `main.py` e `requirements.txt` aparecem na listagem. Esses nomes são
++   **exatamente** assim, com `requirements` no plural e a extensão `.txt`.
++
++   ```bash
++   pwd               # deve terminar com .../Jarwis
++   ls                # precisa mostrar main.py e requirements.txt
++   pip install -r requirements.txt
++   ```
++4. Execute o assistente indicando o backend Termux. A primeira execução pedirá
++   permissão de microfone no Android. Use `./main.py` para garantir que o Python
++   procure o arquivo dentro da pasta atual:
++   ```bash
++   python ./main.py --input-backend termux --log-level INFO
++   ```
++
++O Jarwis criará o diretório `~/.jarwis/` para armazenar a lista e arquivos
++temporários de áudio.
++
++### Rodando automaticamente ao iniciar o Termux
++
++O script `scripts/termux_service.sh` aplica `termux-wake-lock` e inicia o Jarwis
++com o backend Termux. Para utilizá-lo com o aplicativo Termux:Boot:
++
++```bash
++mkdir -p ~/.termux/boot
++cp scripts/termux_service.sh ~/.termux/boot/jarwis.sh
++chmod +x ~/.termux/boot/jarwis.sh
++```
++
++Opcionalmente configure variáveis de ambiente antes de chamar o script para ajustar
++wake word ou tempos de escuta (veja a seção "Configuração").
++
++## Execução em computadores
++
++Em sistemas Linux/macOS/Windows com microfone compatível com PyAudio:
++
++```bash
++python -m venv .venv
++source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
++pip install -r requirements-desktop.txt
++python ./main.py --input-backend microphone
++```
++
++Se o PyAudio não estiver disponível, utilize o backend Termux.
++
++## Configuração
++
++As opções podem ser fornecidas pela linha de comando ou por variáveis de ambiente.
++Se um parâmetro não for informado, o Jarwis usa os seguintes valores padrão:
++
++| Variável / Flag | Padrão | Descrição |
++| --------------- | ------ | --------- |
++| `--wake-word` / `JARWIS_WAKE_WORD` | `jarwis` | Palavra de ativação (aceita variações como "jarvis"). |
++| `--input-backend` / `JARWIS_INPUT_BACKEND` | `auto` | `termux`, `microphone` ou `auto` (prioriza Termux). |
++| `--passive-seconds` / `JARWIS_PASSIVE_SECONDS` | `4.0` | Tempo para ouvir o wake word. |
++| `--command-seconds` / `JARWIS_COMMAND_SECONDS` | `6.0` | Janela para entender o comando após o wake word. |
++| `--language` / `JARWIS_LANGUAGE` | `pt-BR` | Idioma usado pelo serviço de transcrição. |
++| `JARWIS_TERMUX_MIC` | `termux-microphone-record` | Comando utilizado para gravar áudio no Termux. |
++| `JARWIS_TERMUX_TTS` | `termux-tts-speak` | Comando de síntese de voz. |
++| `JARWIS_TERMUX_CONTACTS` | `termux-contact-list` | Comando usado para ler os contatos. |
++| `JARWIS_TERMUX_CALL` | `termux-telephony-call` | Comando usado para iniciar chamadas telefônicas. |
++
++## Dependências
++
++- `SpeechRecognition>=3.10` – transcrição de áudio via Google Speech.
++- `pyaudio` (apenas em desktops) – necessário para capturar áudio em tempo real.
++
++No Termux, todas as interações com o microfone, contatos, TTS e telefone passam
++pelos binários do Termux:API.
++
++## Dicas de uso
++
++- A transcrição depende da internet (serviço Google). Para respostas mais rápidas,
++  tente falar frases completas logo após ouvir "Senhor, o que deseja?".
++- O comando de chamadas procura aproximações por nome. Se houver ambiguidade,
++  renomeie os contatos para evitar confusões.
++- Para limpar a lista manualmente, apague o arquivo `~/.jarwis/lista.json`.
++
++Divirta-se com o seu novo Jarwis!
++```
++
++## `requirements.txt`
++```text
++SpeechRecognition>=3.10
++```
++
++## `requirements-desktop.txt`
++```text
++SpeechRecognition>=3.10
++PyAudio>=0.2.13
++```
++
++## `main.py`
++```python
++"""Entrada principal do assistente Jarwis."""
++from __future__ import annotations
++
++import argparse
++import logging
++import sys
++
++from jarwis import JarwisAssistant
++from jarwis.config import load_config_from_env
++
++
++def build_parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(description="Assistente Jarwis em modo escuta")
++    parser.add_argument("--wake-word", help="Palavra de ativação", default=None)
++    parser.add_argument(
++        "--input-backend",
++        choices=["auto", "termux", "microphone"],
++        default=None,
++        help="Origem do áudio (auto detecta, Termux ou microfone padrão)",
++    )
++    parser.add_argument(
++        "--passive-seconds", type=float, default=None, help="Tempo para ouvir o chamado"
++    )
++    parser.add_argument(
++        "--command-seconds", type=float, default=None, help="Tempo máximo para o comando"
++    )
++    parser.add_argument(
++        "--language", default=None, help="Idioma usado na transcrição (ex: pt-BR)"
++    )
++    parser.add_argument(
++        "--once",
++        action="store_true",
++        help="Escuta apenas uma vez depois do wake word e finaliza",
++    )
++    parser.add_argument(
++        "--log-level",
++        default="WARNING",
++        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
++        help="Nível de log emitido no console",
++    )
++    return parser
++
++
++def configure_logging(level: str) -> None:
++    logging.basicConfig(
++        level=getattr(logging, level.upper(), logging.INFO),
++        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
++    )
++
++
++def main(argv: list[str] | None = None) -> int:
++    parser = build_parser()
++    args = parser.parse_args(argv)
++    configure_logging(args.log_level)
++
++    config = load_config_from_env(
++        wake_word=args.wake_word,
++        input_backend=args.input_backend,
++        passive_listen_seconds=args.passive_seconds,
++        command_listen_seconds=args.command_seconds,
++        language=args.language,
++    )
++
++    assistant = JarwisAssistant(config)
++    assistant.run(loop_once=args.once)
++    return 0
++
++
++if __name__ == "__main__":  # pragma: no cover - execução direta
++    sys.exit(main())
++```
++
++## `jarwis/__init__.py`
++```python
++"""Núcleo do assistente Jarwis."""
++
++from .assistant import JarwisAssistant
++from .config import AssistantConfig
++
++__all__ = ["JarwisAssistant", "AssistantConfig"]
++```
++
++## `jarwis/assistant.py`
++```python
++"""Orquestração principal do Jarwis."""
++from __future__ import annotations
++
++import logging
++from typing import Optional
++
++from .commands import ParsedCommand, parse_command
++from .config import AssistantConfig
++from .contacts import ContactBook
++from .memory import MemoryList
++from .speech import SpeechEngine, SpeechError
++
++logger = logging.getLogger(__name__)
++
++
++class JarwisAssistant:
++    """Assistente de voz que reage ao chamado "Jarwis"."""
++
++    def __init__(self, config: Optional[AssistantConfig] = None) -> None:
++        self.config = config or AssistantConfig()
++        self.speech = SpeechEngine(self.config)
++        self.memory = MemoryList(self.config.memory_file)
++        self.contacts = ContactBook(self.config)
++
++    def run(self, loop_once: bool = False) -> None:
++        """Inicia o laço principal de escuta."""
++
++        logger.info("Assistente iniciado com wake words: %s", ", ".join(self.config.wake_words))
++        try:
++            while True:
++                heard = self.speech.listen(self.config.passive_listen_seconds)
++                if not heard:
++                    if loop_once:
++                        break
++                    continue
++                logger.debug("Transcrição passiva: %s", heard)
++                if not self._is_wake_word_present(heard):
++                    if loop_once:
++                        break
++                    continue
++                self.speech.speak("Senhor, o que deseja?")
++                command_text = self.speech.listen(self.config.command_listen_seconds)
++                if not command_text:
++                    self.speech.speak("Não ouvi nenhum pedido, senhor.")
++                    if loop_once:
++                        break
++                    continue
++                logger.info("Comando reconhecido: %s", command_text)
++                response = self._handle_command(command_text)
++                if response:
++                    self.speech.speak(response)
++                if loop_once:
++                    break
++        except KeyboardInterrupt:
++            logger.info("Jarwis interrompido pelo usuário.")
++        except SpeechError as exc:
++            logger.error("Erro de áudio: %s", exc)
++            raise
++
++    def _is_wake_word_present(self, text: str) -> bool:
++        lowered = text.lower()
++        return any(word in lowered for word in self.config.wake_words)
++
++    def _handle_command(self, command_text: str) -> str:
++        parsed = parse_command(command_text)
++        if parsed is None:
++            return "Ainda não sei como fazer isso, senhor."
++        if parsed.action == "call":
++            return self._handle_call(parsed)
++        if parsed.action == "add" and parsed.text:
++            self.memory.add(parsed.text)
++            return f"Adicionei {parsed.text} à lista, senhor."
++        if parsed.action == "list_all":
++            items = self.memory.items()
++            if not items:
++                return "A lista está vazia, senhor."
++            itens_formatados = ", ".join(items)
++            return f"Na lista estão: {itens_formatados}."
++        if parsed.action == "nth" and parsed.index:
++            item = self.memory.nth(parsed.index)
++            if item is None:
++                return "Ainda não tenho tantos itens assim na lista, senhor."
++            return f"O {parsed.index}º termo da lista é {item}."
++        if parsed.action == "remove" and parsed.text:
++            removed = self.memory.remove(parsed.text)
++            if not removed:
++                return "Senhor, isso não tem na lista."
++            return f"Retirei {parsed.text} da lista, senhor."
++        return "Ainda não sei como fazer isso, senhor."
++
++    def _handle_call(self, parsed: ParsedCommand) -> str:
++        if not parsed.text:
++            return "Preciso saber para quem ligar, senhor."
++        contact = self.contacts.find(parsed.text)
++        if contact is None:
++            return f"Não encontrei {parsed.text} nos contatos, senhor."
++        if not self.contacts.call(contact):
++            return "Não consegui iniciar a chamada, senhor."
++        return f"Ligando para {contact.name}."
++
++
++__all__ = ["JarwisAssistant"]
++```
++
++## `jarwis/commands.py`
++```python
++"""Analisador dos comandos de voz do Jarwis."""
++from __future__ import annotations
++
++import re
++import unicodedata
++from dataclasses import dataclass
++from typing import Optional
++
++
++@dataclass
++class ParsedCommand:
++    action: str
++    text: str | None = None
++    index: int | None = None
++
++
++def parse_command(command: str) -> Optional[ParsedCommand]:
++    """Interpreta uma frase de comando e retorna a intenção."""
++
++    command = command.strip()
++    if not command:
++        return None
++    lowered = command.lower()
++
++    call_match = re.search(r"ligar\s+para\s+(.+)", command, flags=re.IGNORECASE)
++    if call_match:
++        name = call_match.group(1).strip().rstrip("?.!")
++        return ParsedCommand("call", text=name)
++
++    if re.search(r"o que tem na lista", lowered):
++        return ParsedCommand("list_all")
++
++    nth_match = re.search(
++        r"qual\s+(?:é|e)\s+(?:o|a)?\s*([^\?]+?)\s+termo\s+da\s+lista",
++        command,
++        flags=re.IGNORECASE,
++    )
++    if nth_match:
++        index = _parse_ordinal(nth_match.group(1))
++        if index is not None:
++            return ParsedCommand("nth", index=index)
++
++    remove_match = re.search(
++        r"retirar\s+(.+?)\s+da\s+lista",
++        command,
++        flags=re.IGNORECASE,
++    )
++    if remove_match:
++        item = remove_match.group(1).strip().rstrip("?.!")
++        return ParsedCommand("remove", text=item)
++
++    add_match = re.search(
++        r"adicionar\s+(.+?)\s+(?:na|a|à)\s+lista",
++        command,
++        flags=re.IGNORECASE,
++    )
++    if add_match:
++        item = add_match.group(1).strip().rstrip("?.!")
++        return ParsedCommand("add", text=item)
++
++    if lowered.startswith("adicionar "):
++        item = command[10:].strip().rstrip("?.!")
++        return ParsedCommand("add", text=item)
++
++    if lowered.startswith("retirar "):
++        item = command[8:].strip().rstrip("?.!")
++        return ParsedCommand("remove", text=item)
++
++    return None
++
++
++ORDINAL_SINGLE = {
++    "primeiro": 1,
++    "primeira": 1,
++    "segundo": 2,
++    "segunda": 2,
++    "terceiro": 3,
++    "terceira": 3,
++    "quarto": 4,
++    "quarta": 4,
++    "quinto": 5,
++    "quinta": 5,
++    "sexto": 6,
++    "sexta": 6,
++    "sétimo": 7,
++    "setimo": 7,
++    "sétima": 7,
++    "setima": 7,
++    "oitavo": 8,
++    "oitava": 8,
++    "nono": 9,
++    "nona": 9,
++    "décimo": 10,
++    "decimo": 10,
++    "décima": 10,
++    "decima": 10,
++}
++
++ORDINAL_COMPOSED = {
++    "décimo primeiro": 11,
++    "decimo primeiro": 11,
++    "décima primeira": 11,
++    "decima primeira": 11,
++    "décimo segundo": 12,
++    "decimo segundo": 12,
++    "décima segunda": 12,
++    "decima segunda": 12,
++    "décimo terceiro": 13,
++    "decimo terceiro": 13,
++    "décima terceira": 13,
++    "decima terceira": 13,
++    "décimo quarto": 14,
++    "decimo quarto": 14,
++    "décima quarta": 14,
++    "decima quarta": 14,
++    "décimo quinto": 15,
++    "decimo quinto": 15,
++    "décima quinta": 15,
++    "decima quinta": 15,
++    "décimo sexto": 16,
++    "decimo sexto": 16,
++    "décima sexta": 16,
++    "decima sexta": 16,
++    "décimo sétimo": 17,
++    "decimo setimo": 17,
++    "décima sétima": 17,
++    "decima setima": 17,
++    "décimo oitavo": 18,
++    "decimo oitavo": 18,
++    "décima oitava": 18,
++    "decima oitava": 18,
++    "décimo nono": 19,
++    "decimo nono": 19,
++    "décima nona": 19,
++    "decima nona": 19,
++    "vigésimo": 20,
++    "vigesimo": 20,
++    "vigésima": 20,
++    "vigesima": 20,
++}
++
++
++def _parse_ordinal(fragment: str) -> Optional[int]:
++    fragment = fragment.strip().lower()
++    digits = re.sub(r"[^0-9]", "", fragment)
++    if digits:
++        try:
++            return int(digits)
++        except ValueError:
++            return None
++    normalized = unicodedata.normalize("NFD", fragment)
++    normalized = " ".join(
++        "".join(ch for ch in part if unicodedata.category(ch) != "Mn")
++        for part in normalized.split()
++    ).strip()
++    if normalized in ORDINAL_COMPOSED:
++        return ORDINAL_COMPOSED[normalized]
++    tokens = normalized.split()
++    if len(tokens) == 1 and tokens[0] in ORDINAL_SINGLE:
++        return ORDINAL_SINGLE[tokens[0]]
++    if len(tokens) >= 2:
++        combined = " ".join(tokens[:2])
++        if combined in ORDINAL_COMPOSED:
++            return ORDINAL_COMPOSED[combined]
++    return None
++
++
++__all__ = ["ParsedCommand", "parse_command"]
++```
++
++## `jarwis/config.py`
++```python
++"""Configurações e utilidades de carregamento do assistente."""
++from __future__ import annotations
++
++import os
++from dataclasses import dataclass, field
++from pathlib import Path
++
++
++def _env_float(name: str, default: float) -> float:
++    value = os.getenv(name)
++    if value is None:
++        return default
++    try:
++        return float(value)
++    except ValueError:
++        return default
++
++
++def _env_int(name: str, default: int) -> int:
++    value = os.getenv(name)
++    if value is None:
++        return default
++    try:
++        return int(value)
++    except ValueError:
++        return default
++
++
++@dataclass
++class AssistantConfig:
++    """Parâmetros centrais do Jarwis."""
++
++    wake_word: str = "jarwis"
++    alternate_wake_words: tuple[str, ...] = ("jarvis",)
++    language: str = "pt-BR"
++    passive_listen_seconds: float = 4.0
++    command_listen_seconds: float = 6.0
++    input_backend: str = "auto"
++    sample_rate: int = 16000
++    data_dir: Path = field(default_factory=lambda: Path.home() / ".jarwis")
++    memory_file: Path = field(init=False)
++    contact_refresh_seconds: int = 900
++    termux_microphone_command: str = "termux-microphone-record"
++    termux_tts_command: str = "termux-tts-speak"
++    termux_contact_command: str = "termux-contact-list"
++    termux_call_command: str = "termux-telephony-call"
++
++    def __post_init__(self) -> None:
++        self.data_dir.mkdir(parents=True, exist_ok=True)
++        self.memory_file = self.data_dir / "lista.json"
++
++    @property
++    def wake_words(self) -> tuple[str, ...]:
++        return tuple({self.wake_word.lower(), *(w.lower() for w in self.alternate_wake_words)})
++
++
++def load_config_from_env(**overrides: obje
