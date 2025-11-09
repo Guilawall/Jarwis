@@ -1,0 +1,12 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/requirements-desktop.txt b/requirements-desktop.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..e2721745f227508a5c2e90b204ede8cd4e4677d5
+--- /dev/null
++++ b/requirements-desktop.txt
+@@ -0,0 +1,2 @@
++SpeechRecognition>=3.10
++PyAudio>=0.2.13
+ 
+EOF
+)
